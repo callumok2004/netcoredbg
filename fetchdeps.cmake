@@ -26,11 +26,22 @@ if ("${CORECLR_DIR}" STREQUAL "")
             file(REMOVE_RECURSE "${CORECLR_DIR}")
         endif()
         execute_process(
-            COMMAND ${GIT_EXECUTABLE} clone --progress --depth 1 https://github.com/dotnet/runtime "${CORECLR_DIR}" -b "${CORECLR_BRANCH}"
+            COMMAND ${GIT_EXECUTABLE} clone --progress --depth 1 --filter=blob:none --no-checkout https://github.com/dotnet/runtime "${CORECLR_DIR}" -b "${CORECLR_BRANCH}"
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             RESULT_VARIABLE retcode)
         if (NOT "${retcode}" STREQUAL "0")
             message(FATAL_ERROR "Fatal error when cloning coreclr sources")
+        endif()
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} sparse-checkout set --no-cone /src/coreclr/ /src/native/ /eng/ /global.json
+            WORKING_DIRECTORY ${CORECLR_DIR}
+            RESULT_VARIABLE retcode)
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} checkout "${CORECLR_BRANCH}"
+            WORKING_DIRECTORY ${CORECLR_DIR}
+            RESULT_VARIABLE retcode)
+        if (NOT "${retcode}" STREQUAL "0")
+            message(FATAL_ERROR "Fatal error when checking out coreclr sources")
         endif()
     endif()
 

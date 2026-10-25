@@ -411,6 +411,71 @@ void VSCodeProtocol::EmitExecEvent(PID pid, const std::string& argv0)
     EmitEvent("process", body);
 }
 
+// vsdbg-compatible `exceptionOptions`: path[0] names the category ("CLR Exceptions"), path[1] lists
+// exception types. A category-level option applies to every type except those given their own option.
+static void AddExceptionOptions(const json &arguments, std::vector<ExceptionBreakpoint> &exceptionBreakpoints)
+{
+    auto options = arguments.find("exceptionOptions");
+    if (options == arguments.end() || !options->is_array())
+        return;
+
+    struct CategoryMode { bool seen = false; std::string breakMode; };
+    CategoryMode category;
+    std::unordered_set<std::string> overridden;
+
+    for (const auto &option : *options)
+    {
+        std::string breakMode = option.value("breakMode", std::string("never"));
+        auto path = option.find("path");
+        if (path == option.end() || !path->is_array() || path->size() < 2)
+        {
+            category.seen = true;
+            category.breakMode = breakMode;
+            continue;
+        }
+
+        const json &types = (*path)[1];
+        std::unordered_set<std::string> names;
+        for (const auto &name : types.value("names", std::vector<std::string>()))
+            names.insert(name);
+
+        if (names.empty())
+            continue;
+
+        overridden.insert(names.begin(), names.end());
+
+        ExceptionBreakpointFilter filter;
+        if (breakMode == "always")
+            filter = ExceptionBreakpointFilter::THROW;
+        else if (breakMode == "userUnhandled")
+            filter = ExceptionBreakpointFilter::USER_UNHANDLED;
+        else
+            continue;
+
+        exceptionBreakpoints.emplace_back(ExceptionCategory::CLR, filter);
+        exceptionBreakpoints.back().condition = std::move(names);
+        exceptionBreakpoints.back().negativeCondition = types.value("negate", false);
+    }
+
+    if (!category.seen)
+        return;
+
+    ExceptionBreakpointFilter filter;
+    if (category.breakMode == "always")
+        filter = ExceptionBreakpointFilter::THROW;
+    else if (category.breakMode == "userUnhandled")
+        filter = ExceptionBreakpointFilter::USER_UNHANDLED;
+    else
+        return;
+
+    exceptionBreakpoints.emplace_back(ExceptionCategory::CLR, filter);
+    if (!overridden.empty())
+    {
+        exceptionBreakpoints.back().condition = std::move(overridden);
+        exceptionBreakpoints.back().negativeCondition = true;
+    }
+}
+
 static void AddCapabilitiesTo(json &capabilities)
 {
     capabilities["supportsConfigurationDoneRequest"] = true;
@@ -432,7 +497,7 @@ static void AddCapabilitiesTo(json &capabilities)
         excFilters.push_back(filter);
     }
     capabilities["exceptionBreakpointFilters"] = excFilters;
-    capabilities["supportsExceptionOptions"] = false; // TODO add implementation
+    capabilities["supportsExceptionOptions"] = true;
 }
 
 void VSCodeProtocol::EmitCapabilitiesEvent()
@@ -543,6 +608,8 @@ static HRESULT HandleCommand(std::shared_ptr<IDebugger> &sharedDebugger, std::st
             std::istream_iterator<std::string> end;
             exceptionBreakpoints.back().condition = std::unordered_set<std::string>(begin, end);
         }
+
+        AddExceptionOptions(arguments, exceptionBreakpoints);
 
         HRESULT Status;
         std::vector<Breakpoint> breakpoints;
