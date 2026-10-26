@@ -10,12 +10,17 @@
 namespace netcoredbg
 {
 
-HRESULT SimpleStepper::SetupStep(ICorDebugThread *pThread, IDebugger::StepType stepType)
+HRESULT SimpleStepper::SetupStep(ICorDebugThread *pThread, IDebugger::StepType stepType, ICorDebugFrame *pFrame)
 {
     HRESULT Status;
 
+    // A frame is given when the thread's active frame is native (for example a P/Invoke that is
+    // blocked in GetMessage): the step is then relative to the first managed frame with source.
     ToRelease<ICorDebugStepper> pStepper;
-    IfFailRet(pThread->CreateStepper(&pStepper));
+    if (pFrame != nullptr)
+        IfFailRet(pFrame->CreateStepper(&pStepper));
+    else
+        IfFailRet(pThread->CreateStepper(&pStepper));
 
     CorDebugIntercept mask = (CorDebugIntercept)(INTERCEPT_ALL & ~(INTERCEPT_SECURITY | INTERCEPT_CLASS_INIT));
     IfFailRet(pStepper->SetInterceptMask(mask));
@@ -46,7 +51,7 @@ HRESULT SimpleStepper::SetupStep(ICorDebugThread *pThread, IDebugger::StepType s
     BOOL bStepIn = stepType == IDebugger::STEP_IN;
 
     COR_DEBUG_STEP_RANGE range;
-    if (SUCCEEDED(m_sharedModules->GetStepRangeFromCurrentIP(pThread, &range)))
+    if (SUCCEEDED(pFrame != nullptr ? m_sharedModules->GetStepRangeFromFrame(pFrame, &range) : m_sharedModules->GetStepRangeFromCurrentIP(pThread, &range)))
     {
         IfFailRet(pStepper->StepRange(bStepIn, &range, 1));
     } else {

@@ -83,13 +83,54 @@ HRESULT Steppers::SetupStep(ICorDebugThread *pThread, IDebugger::StepType stepTy
         return E_FAIL;
 
     ULONG32 ilOffset;
-    IfFailRet(m_sharedModules->GetFrameILAndSequencePoint(pFrame, ilOffset, m_StepStartSP));
+    ICorDebugFrame *pStepFrame = nullptr;
+    ToRelease<ICorDebugFrame> pUserFrame;
+    if (FAILED(m_sharedModules->GetFrameILAndSequencePoint(pFrame, ilOffset, m_StepStartSP)))
+    {
+        IfFailRet(FindFirstFrameWithSource(pThread, &pUserFrame, ilOffset));
+        pStepFrame = pUserFrame.GetPtr();
+    }
 
-    IfFailRet(m_asyncStepper->SetupStep(pThread, stepType));
+    IfFailRet(m_asyncStepper->SetupStep(pThread, stepType, pStepFrame));
     if (Status == S_OK) // S_FALSE = setup simple stepper
         return S_OK;
 
-    return m_simpleStepper->SetupStep(pThread, stepType);
+    return m_simpleStepper->SetupStep(pThread, stepType, pStepFrame);
+}
+
+HRESULT Steppers::FindFirstFrameWithSource(ICorDebugThread *pThread, ICorDebugFrame **ppFrame, ULONG32 &ilOffset)
+{
+    HRESULT Status;
+    ToRelease<ICorDebugChainEnum> pChains;
+    IfFailRet(pThread->EnumerateChains(&pChains));
+
+    ICorDebugChain *pRawChain = nullptr;
+    ULONG chainsFetched = 0;
+    while (SUCCEEDED(pChains->Next(1, &pRawChain, &chainsFetched)) && chainsFetched == 1)
+    {
+        ToRelease<ICorDebugChain> pChain(pRawChain);
+        ToRelease<ICorDebugFrameEnum> pFrames;
+        if (FAILED(pChain->EnumerateFrames(&pFrames)))
+            continue;
+
+        ICorDebugFrame *pRawFrame = nullptr;
+        ULONG framesFetched = 0;
+        while (SUCCEEDED(pFrames->Next(1, &pRawFrame, &framesFetched)) && framesFetched == 1)
+        {
+            ToRelease<ICorDebugFrame> pFrame(pRawFrame);
+            ToRelease<ICorDebugILFrame> pILFrame;
+            if (FAILED(pFrame->QueryInterface(IID_ICorDebugILFrame, (LPVOID*) &pILFrame)))
+                continue;
+
+            if (FAILED(m_sharedModules->GetFrameILAndSequencePoint(pFrame, ilOffset, m_StepStartSP)))
+                continue;
+
+            *ppFrame = pFrame.Detach();
+            return S_OK;
+        }
+    }
+
+    return E_FAIL;
 }
 
 HRESULT Steppers::ManagedCallbackBreakpoint(ICorDebugAppDomain *pAppDomain, ICorDebugThread *pThread)

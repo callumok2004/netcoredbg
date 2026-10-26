@@ -237,12 +237,18 @@ static HRESULT SetNotificationForWaitCompletion(ICorDebugThread *pThread, ICorDe
     return S_OK;
 }
 
-HRESULT AsyncStepper::SetupStep(ICorDebugThread *pThread, IDebugger::StepType stepType)
+HRESULT AsyncStepper::SetupStep(ICorDebugThread *pThread, IDebugger::StepType stepType, ICorDebugFrame *pStepFrame)
 {
     HRESULT Status;
 
     ToRelease<ICorDebugFrame> pFrame;
-    IfFailRet(pThread->GetActiveFrame(&pFrame));
+    if (pStepFrame != nullptr)
+    {
+        pStepFrame->AddRef();
+        pFrame = pStepFrame;
+    }
+    else
+        IfFailRet(pThread->GetActiveFrame(&pFrame));
     if (pFrame == nullptr)
         return E_FAIL;
 
@@ -292,7 +298,7 @@ HRESULT AsyncStepper::SetupStep(ICorDebugThread *pThread, IDebugger::StepType st
         std::string builderType;
         IfFailRet(TypePrinter::GetTypeOfValue(pBuilderValue, builderType));
         if (builderType == "System.Runtime.CompilerServices.AsyncVoidMethodBuilder")
-            return m_simpleStepper->SetupStep(pThread, IDebugger::StepType::STEP_OUT);
+            return m_simpleStepper->SetupStep(pThread, IDebugger::StepType::STEP_OUT, pStepFrame);
 
         IfFailRet(SetNotificationForWaitCompletion(pThread, pFrame, pBuilderValue, m_sharedEvalHelpers.get()));
         IfFailRet(SetBreakpointIntoNotifyDebuggerOfWaitCompletion());

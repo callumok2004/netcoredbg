@@ -32,6 +32,7 @@ public:
     {}
 
     HRESULT SetupStep(ICorDebugThread *pThread, IDebugger::StepType stepType);
+    HRESULT FindFirstFrameWithSource(ICorDebugThread *pThread, ICorDebugFrame **ppFrame, ULONG32 &ilOffset);
 
     // Important! Callbacks related methods must control return for succeeded return code.
     // Do not allow debugger API return succeeded (uncontrolled) return code.

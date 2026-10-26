@@ -397,6 +397,13 @@ HRESULT Modules::GetStepRangeFromCurrentIP(ICorDebugThread *pThread, COR_DEBUG_S
     if (pFrame == nullptr)
         return E_FAIL;
 
+    return GetStepRangeFromFrame(pFrame, range);
+}
+
+HRESULT Modules::GetStepRangeFromFrame(ICorDebugFrame *pFrame, COR_DEBUG_STEP_RANGE *range)
+{
+    HRESULT Status;
+
     mdMethodDef methodToken;
     IfFailRet(pFrame->GetFunctionToken(&methodToken));
 

@@ -114,6 +114,10 @@ public:
         ICorDebugThread *pThread,
         COR_DEBUG_STEP_RANGE *range);
 
+    HRESULT GetStepRangeFromFrame(
+        ICorDebugFrame *pFrame,
+        COR_DEBUG_STEP_RANGE *range);
+
     HRESULT TryLoadModuleSymbols(
         ICorDebugModule *pModule,
         Module &module,
