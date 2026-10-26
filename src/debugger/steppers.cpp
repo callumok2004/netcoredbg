@@ -79,13 +79,11 @@ HRESULT Steppers::SetupStep(ICorDebugThread *pThread, IDebugger::StepType stepTy
 
     ToRelease<ICorDebugFrame> pFrame;
     IfFailRet(pThread->GetActiveFrame(&pFrame));
-    if (pFrame == nullptr)
-        return E_FAIL;
 
     ULONG32 ilOffset;
     ICorDebugFrame *pStepFrame = nullptr;
     ToRelease<ICorDebugFrame> pUserFrame;
-    if (FAILED(m_sharedModules->GetFrameILAndSequencePoint(pFrame, ilOffset, m_StepStartSP)))
+    if (pFrame == nullptr || FAILED(m_sharedModules->GetFrameILAndSequencePoint(pFrame, ilOffset, m_StepStartSP)))
     {
         IfFailRet(FindFirstFrameWithSource(pThread, &pUserFrame, ilOffset));
         pStepFrame = pUserFrame.GetPtr();
